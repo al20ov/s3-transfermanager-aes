@@ -1,4 +1,4 @@
-module s3-transfermanager-test
+module s3-transfermanager-aes
 
 go 1.27
 
