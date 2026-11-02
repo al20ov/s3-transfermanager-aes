@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -23,7 +24,7 @@ import (
 
 var bucket string
 
-var secretHex string = "6368616e676520746869732070617373" // "change this pass"
+var secretHex string = "6368616e676520746869732070617373" // spells out "change this pass" so CHANGE THIS
 
 const maxBodySize int64 = 32 << 28 // 8GiB
 
@@ -83,17 +84,24 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 	}
 	// aes stuff
 
-	secret, _ := hex.DecodeString(secretHex)
+	secret, err := hex.DecodeString(secretHex)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	block, err := aes.NewCipher(secret)
 
 	if err != nil {
-		panic(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	iv := make([]byte, aes.BlockSize)
 
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		panic(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	stream := cipher.NewCTR(block, iv)
@@ -113,7 +121,13 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 	})
 
 	if err != nil {
-		fmt.Println(err)
+		var maxBytesErr *http.MaxBytesError
+
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, fmt.Sprintf("request body over %d byte limit", maxBytesErr.Limit), http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	fmt.Println("Sent file", key, "to", bucket)
@@ -145,10 +159,16 @@ func (s *AppState) GetObjectHandler(w http.ResponseWriter, request *http.Request
 	}
 
 	// aes decrypt
-	secret, _ := hex.DecodeString(secretHex)
+	secret, err := hex.DecodeString(secretHex)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	block, err := aes.NewCipher(secret)
 	if err != nil {
-		panic(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	ivHex, ok := output.Metadata["iv"]
@@ -179,5 +199,3 @@ func (s *AppState) GetObjectHandler(w http.ResponseWriter, request *http.Request
 		return
 	}
 }
-
-// To decrypt after the fact: `openssl enc -d -aes-128-ctr -in encrypted_file.bin -out decrypted_file.txt -K <HEX_KEY> -iv <HEX_IV>`
