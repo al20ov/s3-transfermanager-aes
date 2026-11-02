@@ -38,3 +38,5 @@ To decrypt a file with openssl instead, use:
 ```sh
 openssl enc -d -aes-128-ctr -in ciphertext.txt -out cleartext.txt -K <hex-encoded key> -iv <hex-encoded iv>
 ```
+
+TODO: replace mime.TypeByExtension with http.DetectContentType?

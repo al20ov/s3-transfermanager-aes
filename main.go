@@ -8,8 +8,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -20,8 +22,6 @@ import (
 // "github.com/goforj/godump"
 
 var bucket string
-
-var contentType string = "text/plain"
 
 var secretHex string = "6368616e676520746869732070617373" // "change this pass"
 
@@ -76,6 +76,11 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 	// key comes from the last segment of the path
 	key := strings.TrimPrefix(path, "/")
 	fullPath := path
+
+	contentType := mime.TypeByExtension(filepath.Ext(fullPath))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 	// aes stuff
 
 	secret, _ := hex.DecodeString(secretHex)
