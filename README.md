@@ -18,7 +18,7 @@ Then, you can start making requests with `curl`, here I'm sending plaintext
 which will get encrypted and stored on the bucket as ciphertext:
 
 ```sh
-curl -X POST -F "file=@plaintext.txt" http://localhost:8080/testdir/ciphertext.txt
+curl -X POST --data-binary @plaintext.txt http://localhost:8080/testdir/ciphertext.txt
 ```
 
 Then, to download it back decrypted:

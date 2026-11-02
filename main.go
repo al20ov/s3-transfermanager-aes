@@ -25,7 +25,7 @@ var contentType string = "text/plain"
 
 var secretHex string = "6368616e676520746869732070617373" // "change this pass"
 
-const maxBodySize int64 = 32 << 24
+const maxBodySize int64 = 32 << 28 // 8GiB
 
 type AppState struct {
 	transfermanagerClient *transfermanager.Client
@@ -57,6 +57,8 @@ func main() {
 	}
 
 	server.HandleFunc("POST /{path...}", appState.PutObjectHandler)
+	server.HandleFunc("PUT /{path...}", appState.PutObjectHandler)
+
 	server.HandleFunc("GET /{path...}", appState.GetObjectHandler)
 
 	http.ListenAndServe("0.0.0.0:8080", server)
@@ -67,17 +69,7 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 
 	request.Body = http.MaxBytesReader(w, request.Body, maxBodySize)
 
-	if err := request.ParseMultipartForm(maxBodySize); err != nil {
-		http.Error(w, "File too large", http.StatusBadRequest)
-		return
-	}
-
-	file, _, err := request.FormFile("file")
-
-	if err != nil {
-		http.Error(w, "Error retrieving file", http.StatusBadRequest)
-		return
-	}
+	file := request.Body
 
 	defer file.Close()
 
