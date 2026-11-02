@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -18,7 +19,8 @@ import (
 
 // "github.com/goforj/godump"
 
-var bucket string = "filestash"
+var bucket string
+
 var key string = "hellofile"
 var contentType string = "text/plain"
 
@@ -34,6 +36,12 @@ type AppState struct {
 
 func main() {
 	ctx := context.Background()
+
+	bucket = os.Getenv("BUCKET_NAME")
+	if bucket == "" {
+		panic("BUCKET_NAME is required")
+	}
+
 	sdkConfig, err := config.LoadDefaultConfig(ctx)
 
 	server := http.NewServeMux()
