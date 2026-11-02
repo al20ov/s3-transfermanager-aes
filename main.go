@@ -10,7 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
@@ -21,7 +21,6 @@ import (
 
 var bucket string
 
-var key string = "hellofile"
 var contentType string = "text/plain"
 
 var secretHex string = "6368616e676520746869732070617373" // "change this pass"
@@ -30,7 +29,6 @@ const maxBodySize int64 = 32 << 24
 
 type AppState struct {
 	transfermanagerClient *transfermanager.Client
-	s3Client              *s3.Client
 	ctx                   *context.Context
 }
 
@@ -55,7 +53,6 @@ func main() {
 
 	appState := AppState{
 		transfermanagerClient: transfermanagerClient,
-		s3Client:              s3Client,
 		ctx:                   &ctx,
 	}
 
@@ -83,7 +80,10 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 	}
 
 	defer file.Close()
-	fullPath := filepath.Join(path, key)
+
+	// key comes from the last segment of the path
+	key := strings.TrimPrefix(path, "/")
+	fullPath := path
 	// aes stuff
 
 	secret, _ := hex.DecodeString(secretHex)
@@ -104,7 +104,7 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 	reader := &cipher.StreamReader{S: stream, R: file}
 
 	// END aes stuff
-	output, err := s.transfermanagerClient.UploadObject(*s.ctx, &transfermanager.UploadObjectInput{
+	_, err = s.transfermanagerClient.UploadObject(*s.ctx, &transfermanager.UploadObjectInput{
 		Bucket:      &bucket,
 		Key:         &fullPath,
 		ContentType: &contentType,
@@ -114,7 +114,6 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 			"iv":         hex.EncodeToString(iv),
 		},
 	})
-	_ = output
 
 	if err != nil {
 		fmt.Println(err)
@@ -127,11 +126,15 @@ func (s *AppState) PutObjectHandler(w http.ResponseWriter, request *http.Request
 func (s *AppState) GetObjectHandler(w http.ResponseWriter, request *http.Request) {
 	path := request.PathValue("path")
 
-	fullPath := filepath.Join(path, key)
+	if strings.HasSuffix(path, "/") {
+		http.Error(w, "Object not found", http.StatusNotFound)
+		return
+	}
+	filename := strings.TrimPrefix(path, "/")
 
 	output, err := s.transfermanagerClient.GetObject(*s.ctx, &transfermanager.GetObjectInput{
 		Bucket: &bucket,
-		Key:    &fullPath,
+		Key:    &path,
 	})
 
 	if err != nil {
@@ -171,7 +174,7 @@ func (s *AppState) GetObjectHandler(w http.ResponseWriter, request *http.Request
 		contentType = *output.ContentType
 	}
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", key))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
 
 	_, err = io.Copy(w, reader)
 	if err != nil {
