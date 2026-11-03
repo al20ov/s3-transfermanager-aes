@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // "github.com/goforj/godump"
@@ -30,6 +31,7 @@ const maxBodySize int64 = 32 << 28 // 8GiB
 
 type AppState struct {
 	transfermanagerClient *transfermanager.Client
+	s3Client              *s3.Client
 	ctx                   *context.Context
 }
 
@@ -54,6 +56,7 @@ func main() {
 
 	appState := AppState{
 		transfermanagerClient: transfermanagerClient,
+		s3Client:              s3Client,
 		ctx:                   &ctx,
 	}
 
@@ -61,6 +64,8 @@ func main() {
 	server.HandleFunc("PUT /{path...}", appState.PutObjectHandler)
 
 	server.HandleFunc("GET /{path...}", appState.GetObjectHandler)
+
+	server.HandleFunc("DELETE /{path...}", appState.DeleteObjectHandler)
 
 	http.ListenAndServe("0.0.0.0:8080", server)
 }
@@ -198,4 +203,31 @@ func (s *AppState) GetObjectHandler(w http.ResponseWriter, request *http.Request
 		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (s *AppState) DeleteObjectHandler(w http.ResponseWriter, request *http.Request) {
+	path := request.PathValue("path")
+
+	if strings.HasSuffix(path, "/") {
+		http.Error(w, "Object not found", http.StatusNotFound)
+		return
+	}
+
+	_, err := s.s3Client.DeleteObject(*s.ctx, &s3.DeleteObjectInput{
+		Bucket: &bucket,
+		Key:    &path,
+	})
+
+	if err != nil {
+		var notFoundErr *types.NoSuchKey
+
+		if errors.As(err, &notFoundErr) {
+			http.Error(w, "Object not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error deleting object", http.StatusInternalServerError)
+		return
+	}
+	fmt.Println("Deleted", path, "from", bucket)
+	fmt.Fprintln(w, "OK")
 }
